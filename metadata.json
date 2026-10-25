@@ -1,0 +1,6 @@
+{
+  "name": "PressPDF Batch Compressor",
+  "description": "High-fidelity batch PDF compressor that reduces file size while preserving razor-sharp image quality, supporting multi-file queues and live comparison.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
