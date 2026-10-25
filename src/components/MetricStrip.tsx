@@ -42,7 +42,9 @@ export const MetricStrip: React.FC<MetricStripProps> = ({ items }) => {
           {completedItems.length > 0 ? formatBytes(totalCompressed) : '—'}
         </p>
         <p className="mt-0.5 text-xs text-slate-400">
-          {completedItems.length > 0 ? `${completedItems.length} files optimized` : 'Awaiting batch run'}
+          {completedItems.length > 0
+            ? `${completedItems.filter((i) => (i.compressedSize || 0) <= 250 * 1024).length}/${completedItems.length} strictly < 250 KB`
+            : 'Target: < 250 KB ceiling active'}
         </p>
       </div>
 

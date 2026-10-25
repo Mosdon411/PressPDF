@@ -1,12 +1,14 @@
-export type CompressionPreset = 'archive' | 'balanced' | 'ultra' | 'compact' | 'custom';
+export type CompressionPreset = 'target250kb' | 'archive' | 'balanced' | 'ultra' | 'compact' | 'custom';
 
 export interface CompressionSettings {
   preset: CompressionPreset;
-  quality: number; // 0.5 to 1.0 (e.g. 0.88 for archive)
-  maxDpi: number; // e.g. 150, 200, 250
+  quality: number; // 0.5 to 1.0
+  maxDpi: number; // e.g. 110, 150, 200
   colorMode: 'color' | 'grayscale';
   stripMetadata: boolean;
   cleanAnnotations: boolean;
+  enforceTargetSize: boolean; // whether to strictly enforce target max file size
+  targetMaxKb: number; // e.g. 250 KB
 }
 
 export type QueueItemStatus = 'idle' | 'analyzing' | 'compressing' | 'completed' | 'error';

@@ -13,7 +13,17 @@ export const PreservationEngineGuide: React.FC = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+        <div className="p-4 bg-slate-950/40 rounded-lg border border-slate-800/60">
+          <div className="flex items-center gap-2 text-emerald-400 mb-2">
+            <Cpu className="w-4 h-4" />
+            <h4 className="text-xs font-semibold text-slate-200">Strict &lt; 250 KB Solver</h4>
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Multi-pass adaptive binary search guarantees your files comply with portal limits under 250 KB while dynamically maximizing DPI and sharpness.
+          </p>
+        </div>
+
         <div className="p-4 bg-slate-950/40 rounded-lg border border-slate-800/60">
           <div className="flex items-center gap-2 text-indigo-400 mb-2">
             <Cpu className="w-4 h-4" />
@@ -30,7 +40,7 @@ export const PreservationEngineGuide: React.FC = () => {
             <h4 className="text-xs font-semibold text-slate-200">High-Q Quantization</h4>
           </div>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Maintains high quantization tables (80%–94% quality) to eliminate blocking artifacts around text glyphs and photos, avoiding muddy compression halos.
+            Maintains calibrated quantization tables to eliminate blocking artifacts around text glyphs and photos, avoiding muddy compression halos.
           </p>
         </div>
 

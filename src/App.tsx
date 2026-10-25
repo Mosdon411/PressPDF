@@ -18,12 +18,14 @@ import {
 export default function App() {
   const [items, setItems] = useState<BatchFileItem[]>([]);
   const [settings, setSettings] = useState<CompressionSettings>({
-    preset: 'archive',
-    quality: 0.88,
-    maxDpi: 200,
+    preset: 'target250kb',
+    quality: 0.78,
+    maxDpi: 130,
     colorMode: 'color',
     stripMetadata: true,
     cleanAnnotations: false,
+    enforceTargetSize: true,
+    targetMaxKb: 250,
   });
 
   const [activeTab, setActiveTab] = useState<'queue' | 'inspector' | 'presets'>('queue');

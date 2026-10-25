@@ -176,9 +176,20 @@ export const BatchQueueTable: React.FC<BatchQueueTableProps> = ({
                   {/* Compressed Size */}
                   <td className="py-3.5 px-3 text-right font-mono tabular-nums">
                     {hasCompleted ? (
-                      <span className="text-indigo-300 font-semibold">
-                        {formatBytes(item.compressedSize || 0)}
-                      </span>
+                      <div>
+                        <span className="text-indigo-300 font-semibold block">
+                          {formatBytes(item.compressedSize || 0)}
+                        </span>
+                        {(item.compressedSize || 0) <= 250 * 1024 ? (
+                          <span className="text-[10px] text-emerald-400 font-sans block">
+                            &lt; 250 KB verified
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-sans block">
+                            Optimized
+                          </span>
+                        )}
+                      </div>
                     ) : item.status === 'compressing' ? (
                       <span className="text-slate-400 animate-pulse">Encoding...</span>
                     ) : (

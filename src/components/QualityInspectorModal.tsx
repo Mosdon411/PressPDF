@@ -114,6 +114,11 @@ export const QualityInspectorModal: React.FC<QualityInspectorModalProps> = ({ it
               <span className="text-xs text-emerald-400 font-mono tabular-nums font-semibold">
                 -{percentSaved}%
               </span>
+              {compressedSize <= 250 * 1024 && (
+                <span className="text-[11px] text-emerald-400 font-medium">
+                  · &lt; 250 KB Verified
+                </span>
+              )}
             </div>
             <p className="mt-0.5 text-xs text-slate-400">
               Original: <span className="font-mono tabular-nums text-slate-300">{formatBytes(originalSize)}</span> · Compressed: <span className="font-mono tabular-nums text-indigo-300">{formatBytes(compressedSize)}</span> · Saved: <span className="font-mono tabular-nums text-emerald-400">{formatBytes(savedBytes)}</span>

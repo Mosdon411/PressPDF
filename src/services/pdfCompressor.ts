@@ -56,59 +56,48 @@ export async function renderPdfPageToDataUrl(
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  // Render using PDF.js v4+ standard syntax
+  // Render using PDF.js standard syntax
   const renderContext = {
     canvasContext: ctx,
     viewport: viewport,
   };
-  // @ts-expect-error - PDF.js typed render signature
-  await page.render(renderContext).promise;
+  await (page as any).render(renderContext).promise;
 
   return canvas.toDataURL('image/jpeg', 0.92);
 }
 
 /**
- * Compresses a PDF file with batch progress reporting and granular image preservation controls
+ * Internal single-pass renderer and assembler
  */
-export async function compressPdf(
-  file: File,
-  settings: CompressionSettings,
+async function executeCompressionPass(
+  sourcePdf: any,
+  fileName: string,
+  targetDpi: number,
+  imageQuality: number,
+  colorMode: 'color' | 'grayscale',
+  stripMetadata: boolean,
   onProgress?: CompressionProgressCallback
-): Promise<{ compressedBlob: Blob; pageCount: number; firstPagePreviewUrl: string }> {
-  const fileArrayBuffer = await file.arrayBuffer();
-
-  // Load via PDF.js to extract and rasterize pages with high-fidelity filtering
-  const loadingTask = pdfjsLib.getDocument({
-    data: new Uint8Array(fileArrayBuffer),
-  });
-  const sourcePdf = await loadingTask.promise;
+): Promise<{ compressedBlob: Blob; firstPagePreviewUrl: string }> {
   const totalPages = sourcePdf.numPages;
-
-  // Create target compressed PDF document
   const targetPdfDoc = await PDFDocument.create();
 
-  if (!settings.stripMetadata) {
-    targetPdfDoc.setTitle(file.name.replace(/\.[^/.]+$/, ''));
+  if (!stripMetadata) {
+    targetPdfDoc.setTitle(fileName.replace(/\.[^/.]+$/, ''));
     targetPdfDoc.setCreator('PressPDF Optimizer');
     targetPdfDoc.setProducer('PressPDF High-Fidelity Engine');
   }
 
-  // Calculate resolution scale from base 72 DPI
-  // e.g. 150 DPI = 150 / 72 ≈ 2.0833
-  // 200 DPI = 200 / 72 ≈ 2.777
   const baseDpi = 72;
-  const scale = Math.max(1, settings.maxDpi / baseDpi);
-
+  const scale = Math.max(0.8, targetDpi / baseDpi);
   let firstPagePreviewUrl = '';
 
   for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
     onProgress?.(pageNum, totalPages, 'rendering');
 
     const page = await sourcePdf.getPage(pageNum);
-    const originalViewport = page.getViewport({ scale: 1.0 }); // 72 DPI points
+    const originalViewport = page.getViewport({ scale: 1.0 });
     const scaledViewport = page.getViewport({ scale });
 
-    // Render page to canvas at target DPI with bicubic image smoothing
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(scaledViewport.width);
     canvas.height = Math.round(scaledViewport.height);
@@ -116,25 +105,22 @@ export async function compressPdf(
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Canvas 2D context unavailable');
 
-    // Fill white background for print pages
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    // @ts-expect-error - PDF.js typed render signature
-    const renderTask = page.render({
+    const renderTask = (page as any).render({
       canvasContext: ctx,
       viewport: scaledViewport,
     });
     await renderTask.promise;
 
     // Apply grayscale conversion if requested
-    if (settings.colorMode === 'grayscale') {
+    if (colorMode === 'grayscale') {
       const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imgData.data;
       for (let i = 0; i < data.length; i += 4) {
-        // Luminance weights (Rec. 601)
         const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
         data[i] = gray;
         data[i + 1] = gray;
@@ -145,8 +131,7 @@ export async function compressPdf(
 
     onProgress?.(pageNum, totalPages, 'encoding');
 
-    // Encode to high quality JPEG with requested quality
-    const imageQuality = Math.min(1.0, Math.max(0.4, settings.quality));
+    const clampedQuality = Math.min(1.0, Math.max(0.35, imageQuality));
     const pageImageBytes = await new Promise<Uint8Array>((resolve, reject) => {
       canvas.toBlob(
         async (blob) => {
@@ -161,16 +146,13 @@ export async function compressPdf(
           resolve(new Uint8Array(buf));
         },
         'image/jpeg',
-        imageQuality
+        clampedQuality
       );
     });
 
     onProgress?.(pageNum, totalPages, 'assembling');
 
-    // Embed the re-encoded high-DPI image into the target PDF document
     const embeddedImage = await targetPdfDoc.embedJpg(pageImageBytes);
-
-    // Add page matching original point dimensions (width & height in pt)
     const newPage = targetPdfDoc.addPage([originalViewport.width, originalViewport.height]);
     newPage.drawImage(embeddedImage, {
       x: 0,
@@ -179,12 +161,11 @@ export async function compressPdf(
       height: originalViewport.height,
     });
 
-    // Clean up memory
+    // Clean up
     canvas.width = 0;
     canvas.height = 0;
   }
 
-  // Save the compressed PDF with object streams enabled for maximum compression
   const compressedPdfBytes = await targetPdfDoc.save({
     useObjectStreams: true,
   });
@@ -193,10 +174,104 @@ export async function compressPdf(
     type: 'application/pdf',
   });
 
+  return { compressedBlob, firstPagePreviewUrl };
+}
+
+/**
+ * Compresses a PDF file with batch progress reporting and guaranteed target size optimization (< 250 KB)
+ */
+export async function compressPdf(
+  file: File,
+  settings: CompressionSettings,
+  onProgress?: CompressionProgressCallback
+): Promise<{ compressedBlob: Blob; pageCount: number; firstPagePreviewUrl: string }> {
+  const fileArrayBuffer = await file.arrayBuffer();
+
+  const loadingTask = pdfjsLib.getDocument({
+    data: new Uint8Array(fileArrayBuffer),
+  });
+  const sourcePdf = await loadingTask.promise;
+  const totalPages = sourcePdf.numPages;
+
+  // Check if target size enforcement is active (e.g. < 250 KB)
+  const shouldEnforceTarget = settings.enforceTargetSize || settings.preset === 'target250kb';
+  const targetMaxKb = settings.targetMaxKb || 250;
+  // Set safe ceiling in bytes to strictly guarantee output is < targetMaxKb (e.g. 248 KB)
+  const safeCeilingBytes = (targetMaxKb * 1024) - 2048;
+
+  let currentDpi = settings.maxDpi;
+  let currentQuality = settings.quality;
+
+  // If targeting < 250 KB, choose intelligent initial parameters calibrated to page count
+  if (shouldEnforceTarget) {
+    if (totalPages === 1) {
+      currentDpi = Math.min(currentDpi, 130);
+      currentQuality = Math.min(currentQuality, 0.80);
+    } else if (totalPages === 2) {
+      currentDpi = Math.min(currentDpi, 105);
+      currentQuality = Math.min(currentQuality, 0.74);
+    } else if (totalPages === 3) {
+      currentDpi = Math.min(currentDpi, 90);
+      currentQuality = Math.min(currentQuality, 0.68);
+    } else {
+      currentDpi = Math.min(currentDpi, Math.max(70, Math.floor(220 / Math.sqrt(totalPages))));
+      currentQuality = Math.min(currentQuality, Math.max(0.48, 0.65 - (totalPages * 0.02)));
+    }
+  }
+
+  // Pass 1
+  let result = await executeCompressionPass(
+    sourcePdf,
+    file.name,
+    currentDpi,
+    currentQuality,
+    settings.colorMode,
+    settings.stripMetadata,
+    onProgress
+  );
+
+  // If target size is enforced and the file exceeds the 250 KB ceiling, adaptively refine
+  if (shouldEnforceTarget && result.compressedBlob.size > safeCeilingBytes) {
+    const excessRatio = safeCeilingBytes / result.compressedBlob.size;
+    // Area scales quadratically with DPI
+    const adaptedDpi = Math.max(65, Math.floor(currentDpi * Math.sqrt(excessRatio) * 0.94));
+    const adaptedQuality = Math.max(
+      0.40,
+      Math.min(currentQuality, Number((currentQuality * Math.pow(excessRatio, 0.45) * 0.96).toFixed(2)))
+    );
+
+    result = await executeCompressionPass(
+      sourcePdf,
+      file.name,
+      adaptedDpi,
+      adaptedQuality,
+      settings.colorMode,
+      settings.stripMetadata,
+      onProgress
+    );
+
+    // Ultra-rare safety pass 3 if still slightly over
+    if (result.compressedBlob.size > safeCeilingBytes) {
+      const finalRatio = safeCeilingBytes / result.compressedBlob.size;
+      const finalDpi = Math.max(55, Math.floor(adaptedDpi * Math.sqrt(finalRatio) * 0.92));
+      const finalQuality = Math.max(0.35, adaptedQuality * 0.88);
+
+      result = await executeCompressionPass(
+        sourcePdf,
+        file.name,
+        finalDpi,
+        finalQuality,
+        settings.colorMode,
+        settings.stripMetadata,
+        onProgress
+      );
+    }
+  }
+
   return {
-    compressedBlob,
+    compressedBlob: result.compressedBlob,
     pageCount: totalPages,
-    firstPagePreviewUrl,
+    firstPagePreviewUrl: result.firstPagePreviewUrl,
   };
 }
 
